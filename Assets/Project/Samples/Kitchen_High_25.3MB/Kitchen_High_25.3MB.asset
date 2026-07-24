@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e59f5be6b3985e24da7f5d006a97e0ba, type: 3}
+  m_Name: Kitchen_High_25.3MB
+  m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatAsset
+  m_FormatVersion: 20260101
+  m_SplatCount: 220599
+  m_BoundsMin: {x: -1.3779031, y: -1.4119285, z: -1.3174362}
+  m_BoundsMax: {x: 1.7617012, y: 1.9834887, z: 0.4333494}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: ef0cde9414732de53d547b448a77e7d4
+  m_PosFormat: 1
+  m_ScaleFormat: 1
+  m_RotFormat: 1
+  m_ColorFormat: 1
+  m_SHFormat: 1
+  m_PosData: {fileID: 4900000, guid: 32ab6620c2779394687a9b82574d9c23, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 51771f61a6c543d4fa323332c2311e33, type: 3}
+  m_ColorData: {fileID: 4900000, guid: 91e07b593f9b12343acb722c787e45db, type: 3}
+  m_SHData: {fileID: 4900000, guid: b012e10a25f91d2499b59099d36743e3, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: f93772a7de2e5e14a98dba17baaa753d, type: 3}

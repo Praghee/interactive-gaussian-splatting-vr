@@ -1,0 +1,16 @@
+{
+    "name": "GaussianSplatVR.Runtime",
+    "rootNamespace": "GaussianSplatVR.Runtime",
+    "references": [ "Unity.Mathematics", "Unity.Collections", "Unity.Burst",
+        "Unity.RenderPipelines.Universal.Runtime", "Unity.RenderPipelines.Core.Runtime",
+        "Oculus.VR" ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

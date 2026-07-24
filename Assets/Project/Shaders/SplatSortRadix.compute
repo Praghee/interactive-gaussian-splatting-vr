@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: MIT
+// InteractiveGaussianSplattingVR
+//
+// GPUSorting DeviceRadixSort kernels (Thomas Smith, b0nes164/GPUSorting, MIT),
+// via gsplat-unity. 8-bit LSD radix, reduce-then-scan: 3 kernels x 4 passes +
+// 1 init = 13 dispatches (vs FFX's 40) -> much faster on tiled mobile GPUs.
+// Quest-safe: wavebasic+waveballot (Vulkan subgroup); VULKAN keyword works
+// around the SPIRV<1.6 WaveGetLaneCount bug on Adreno.
+//
+// KEY_UINT: our CSCalcView writes FloatToSortableUint(viewZ) keys, which sort
+// ascending (back-to-front) as plain uints. Payload = global splat index.
+// Driven by GaussianSplatRadixSort.cs.
+
+#define KEY_UINT
+#define PAYLOAD_UINT
+#define SHOULD_ASCEND
+#define SORT_PAIRS
+#pragma multi_compile __ VULKAN
+
+#pragma kernel InitPayload
+#pragma kernel InitDeviceRadixSort
+#pragma kernel Upsweep
+#pragma kernel Scan
+#pragma kernel Downsweep
+
+#pragma require wavebasic
+#pragma require waveballot
+#pragma use_dxc
+
+#include "DeviceRadixSort.hlsl"
+
+// Fill the payload buffer with identity indices 0..count-1 (optional utility).
+[numthreads(1024, 1, 1)]
+void InitPayload(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= e_numKeys)
+        return;
+
+    b_sortPayload[idx] = idx;
+}

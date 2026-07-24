@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: MIT
+// InteractiveGaussianSplattingVR
+//
+// Chunk frustum culling -- SAFE design (no indirect dispatch, no indirect draw,
+// no atomics, no stream compaction).
+//
+// Splats are Morton-ordered into chunks of 256 with per-chunk AABBs, so a chunk is
+// a tight spatial cluster. This pass runs ONE THREAD PER CHUNK, tests its (dilated)
+// world-space AABB against the camera frustum, and writes a simple 0/1 flag.
+//
+// SplatDecode's CSCalcView then reads that flag FIRST: a culled splat writes a dead
+// entry (pos.w = 0, sort key = 0xFFFFFFFF) and returns immediately, so it skips the
+// expensive decode + spherical-harmonics work, and the vertex shader discards it so
+// it costs no fragments either. Dispatch and draw counts are unchanged (a culled
+// thread simply exits early), which keeps the whole pipeline simple and robust.
+//
+// IMPORTANT: chunk AABBs bound splat CENTRES, but a Gaussian paints pixels beyond
+// its centre, so the box is dilated by _CullMargin to stop big splats popping at
+// the view edge.
+
+#pragma kernel CSCullChunks
+
+ByteAddressBuffer _SplatChunks;        // this cloud's ChunkInfo array (104 B stride)
+RWStructuredBuffer<uint> _ChunkVisible; // 1 = keep, 0 = culled
+
+uint _ChunkCount;         // chunks in this cloud
+uint _ChunkVisBase;       // this cloud's base offset into _ChunkVisible
+float _CullMargin;        // metres to dilate each AABB by
+float4 _FrustumPlanes[6]; // world-space planes: xyz = normal, w = distance
+float4x4 _CullObjectToWorld;
+
+[numthreads(64,1,1)]
+void CSCullChunks(uint3 id : SV_DispatchThreadID)
+{
+    uint chunkIdx = id.x;
+    if (chunkIdx >= _ChunkCount) return;
+
+    // chunk AABB in object space (ChunkInfo starts with posMin, posMax)
+    uint b = chunkIdx * 104u;
+    float3 mn = asfloat(_SplatChunks.Load3(b + 0));
+    float3 mx = asfloat(_SplatChunks.Load3(b + 12));
+
+    // object AABB -> world AABB (handles rotation/scale, so a moved cloud culls right)
+    float3 c = (mn + mx) * 0.5;
+    float3 e = (mx - mn) * 0.5;
+    float3 wc = mul(_CullObjectToWorld, float4(c, 1)).xyz;
+    float3x3 m = (float3x3)_CullObjectToWorld;
+    float3 we = float3(
+        abs(m[0][0])*e.x + abs(m[0][1])*e.y + abs(m[0][2])*e.z,
+        abs(m[1][0])*e.x + abs(m[1][1])*e.y + abs(m[1][2])*e.z,
+        abs(m[2][0])*e.x + abs(m[2][1])*e.y + abs(m[2][2])*e.z);
+
+    float3 wMin = wc - we - _CullMargin;   // dilate for Gaussian extent
+    float3 wMax = wc + we + _CullMargin;
+
+    // conservative positive-vertex frustum test
+    uint visible = 1;
+    [unroll]
+    for (int i = 0; i < 6; ++i)
+    {
+        float3 n = _FrustumPlanes[i].xyz;
+        float3 p = float3(n.x >= 0 ? wMax.x : wMin.x,
+                          n.y >= 0 ? wMax.y : wMin.y,
+                          n.z >= 0 ? wMax.z : wMin.z);
+        if (dot(n, p) + _FrustumPlanes[i].w < 0) { visible = 0; break; }   // fully outside
+    }
+
+    _ChunkVisible[_ChunkVisBase + chunkIdx] = visible;
+}

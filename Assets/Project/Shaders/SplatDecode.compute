@@ -1,0 +1,333 @@
+// SPDX-License-Identifier: MIT
+// InteractiveGaussianSplattingVR
+//
+// GPU decode + projection. Quest-safe (integer unpack + lerp, no wave intrinsics).
+// CSCalcView: decode pos/rot/scale/colour + SH evaluation + 3D->2D projection ->
+//   per-splat SplatViewData (clip pos, 2D ellipse axes, packed colour) and a sort
+//   key (view-space Z). This is the inverse of GaussianSplatAssetWriter.
+//
+// Projection/SH math from aras-p/UnityGaussianSplatting, adapted to our full-float
+// ChunkInfo, GraphicsBuffer colour and per-format SH decode.
+
+#pragma kernel CSCalcView
+
+// format ids (match GaussianSplatAsset enum order)
+#define VFMT_32F 0
+#define VFMT_16  1
+#define VFMT_11  2
+#define VFMT_6   3
+#define RFMT_32F 0
+#define RFMT_10  1
+#define CFMT_32F 0
+#define CFMT_16  1
+#define CFMT_8   2
+#define SHFMT_32F 0
+#define SHFMT_16  1
+#define SHFMT_11  2
+#define SHFMT_6   3
+
+ByteAddressBuffer _SplatPos, _SplatOther, _SplatColor, _SplatSH, _SplatChunks;
+
+uint _SplatCount, _UseChunks;
+uint _SplatOffset;   // this cloud's base index into the shared global buffers
+uint _PosFmt, _ScaleFmt, _RotFmt, _ColorFmt, _SHFmt;
+uint _PosStride, _OtherStride, _ColorStride, _SHStride, _RotSize;
+
+// ================= scalar primitives =================
+float InvSquareCentered01(float x) { x -= 0.5; x *= 0.5; x = sqrt(abs(x)) * sign(x); return x + 0.5; }
+
+float3 DecodePacked_6_5_5(uint e)    { return float3((e&63)/63.0, ((e>>6)&31)/31.0, ((e>>11)&31)/31.0); }
+float3 DecodePacked_5_6_5(uint e)    { return float3((e&31)/31.0, ((e>>5)&63)/63.0, ((e>>11)&31)/31.0); }
+float3 DecodePacked_11_10_11(uint e) { return float3((e&2047)/2047.0, ((e>>11)&1023)/1023.0, ((e>>21)&2047)/2047.0); }
+float3 DecodePacked_16_16_16(uint2 e){ return float3((e.x&65535)/65535.0, ((e.x>>16)&65535)/65535.0, (e.y&65535)/65535.0); }
+float4 DecodePacked_10_10_10_2(uint e){ return float4((e&1023)/1023.0, ((e>>10)&1023)/1023.0, ((e>>20)&1023)/1023.0, ((e>>30)&3)/3.0); }
+
+float4 DecodeRotation(float4 pq)   // inverse of PackSmallest3Rotation
+{
+    uint idx = (uint)round(pq.w * 3.0);
+    float4 q;
+    q.xyz = pq.xyz * sqrt(2.0) - (1.0 / sqrt(2.0));
+    q.w   = sqrt(1.0 - saturate(dot(q.xyz, q.xyz)));
+    if (idx == 0) q = q.wxyz;
+    if (idx == 1) q = q.xwyz;
+    if (idx == 2) q = q.xywz;
+    return q;
+}
+
+uint FloatToSortableUint(float f) { uint u = asuint(f); uint mask = -((int)(u >> 31)) | 0x80000000u; return u ^ mask; }
+
+// ================= byte-address loads (addresses are always 2-byte aligned) =================
+uint LoadUShort(ByteAddressBuffer buf, uint addrU) { uint a = addrU & ~0x3u; uint v = buf.Load(a); if (addrU != a) v >>= 16; return v & 0xFFFFu; }
+uint LoadUInt(ByteAddressBuffer buf, uint addrU)
+{ uint a = addrU & ~0x3u; uint v = buf.Load(a); if (addrU != a) { uint v1 = buf.Load(a + 4); v = (v >> 16) | ((v1 & 0xFFFFu) << 16); } return v; }
+float3 LoadHalf3(ByteAddressBuffer buf, uint addrU)
+{ return float3(f16tof32(LoadUShort(buf, addrU)), f16tof32(LoadUShort(buf, addrU + 2)), f16tof32(LoadUShort(buf, addrU + 4))); }
+
+// Single initialised result + single exit: silences the Vulkan/DXC
+// "potentially uninitialized variable" warning. Behaviour is unchanged.
+float3 LoadAndDecodeVector(ByteAddressBuffer buf, uint addrU, uint fmt)
+{
+    float3 result = (float3)0;
+    uint a = addrU & ~0x3u;
+    uint v0 = buf.Load(a);
+
+    if (fmt == VFMT_32F)
+    {
+        uint v1 = buf.Load(a + 4), v2 = buf.Load(a + 8);
+        if (addrU != a) { uint v3 = buf.Load(a + 12); v0=(v0>>16)|((v1&0xFFFFu)<<16); v1=(v1>>16)|((v2&0xFFFFu)<<16); v2=(v2>>16)|((v3&0xFFFFu)<<16); }
+        result = float3(asfloat(v0), asfloat(v1), asfloat(v2));
+    }
+    else if (fmt == VFMT_16)
+    {
+        uint v1 = buf.Load(a + 4);
+        if (addrU != a) { v0=(v0>>16)|((v1&0xFFFFu)<<16); v1 >>= 16; }
+        result = DecodePacked_16_16_16(uint2(v0, v1));
+    }
+    else if (fmt == VFMT_11)
+    {
+        uint v1 = buf.Load(a + 4);
+        if (addrU != a) v0 = (v0>>16)|((v1&0xFFFFu)<<16);
+        result = DecodePacked_11_10_11(v0);
+    }
+    else   // VFMT_6
+    {
+        if (addrU != a) v0 >>= 16;
+        result = DecodePacked_6_5_5(v0);
+    }
+    return result;
+}
+
+// ================= chunk bounds (full-float, 104 B) =================
+struct GSChunk { float3 posMin, posMax, sclMin, sclMax; float4 colMin, colMax; float3 shMin, shMax; };
+GSChunk LoadChunk(uint chunkIdx)
+{
+    uint b = chunkIdx * 104u;
+    GSChunk c;
+    c.posMin = asfloat(_SplatChunks.Load3(b + 0));  c.posMax = asfloat(_SplatChunks.Load3(b + 12));
+    c.sclMin = asfloat(_SplatChunks.Load3(b + 24)); c.sclMax = asfloat(_SplatChunks.Load3(b + 36));
+    c.colMin = asfloat(_SplatChunks.Load4(b + 48)); c.colMax = asfloat(_SplatChunks.Load4(b + 64));
+    c.shMin  = asfloat(_SplatChunks.Load3(b + 80)); c.shMax  = asfloat(_SplatChunks.Load3(b + 92));
+    return c;
+}
+
+float4 LoadColor(uint addr, uint fmt)
+{
+    float4 result = (float4)0;
+    if (fmt == CFMT_32F)
+    {
+        result = asfloat(_SplatColor.Load4(addr));
+    }
+    else if (fmt == CFMT_16)
+    {
+        uint2 r = _SplatColor.Load2(addr);
+        result = float4(f16tof32(r.x&0xFFFFu), f16tof32(r.x>>16), f16tof32(r.y&0xFFFFu), f16tof32(r.y>>16));
+    }
+    else   // CFMT_8
+    {
+        uint e = _SplatColor.Load(addr);
+        result = float4((e&255)/255.0, ((e>>8)&255)/255.0, ((e>>16)&255)/255.0, ((e>>24)&255)/255.0);
+    }
+    return result;
+}
+
+void DecodePosRotScaleColor(uint idx, out float3 pos, out float4 rot, out float3 scale, out float4 color, out bool useChunks, out GSChunk chunk)
+{
+    useChunks = _UseChunks != 0;
+    chunk = (GSChunk)0;
+    if (useChunks) chunk = LoadChunk(idx / 256u);
+
+    float3 posT = LoadAndDecodeVector(_SplatPos, idx * _PosStride, _PosFmt);
+    pos = useChunks ? lerp(chunk.posMin, chunk.posMax, posT) : posT;
+
+    uint otherAddr = idx * _OtherStride;
+    rot = (_RotFmt == RFMT_32F) ? asfloat(_SplatOther.Load4(otherAddr))
+                                : DecodeRotation(DecodePacked_10_10_10_2(LoadUInt(_SplatOther, otherAddr)));
+
+    float3 sclT = LoadAndDecodeVector(_SplatOther, otherAddr + _RotSize, _ScaleFmt);
+    scale = useChunks ? pow(max(lerp(chunk.sclMin, chunk.sclMax, sclT), 0.0), 8.0) : sclT;
+
+    float4 colT = LoadColor(idx * _ColorStride, _ColorFmt);
+    if (useChunks)
+    {
+        float3 rgb = lerp(chunk.colMin.rgb, chunk.colMax.rgb, colT.rgb);
+        float  a   = InvSquareCentered01(lerp(chunk.colMin.a, chunk.colMax.a, colT.a));
+        color = float4(rgb, a);
+    }
+    else color = colT;
+}
+
+// ================= spherical harmonics =================
+static const float SH_C1 = 0.4886025;
+static const float SH_C2[] = { 1.0925484, -1.0925484, 0.3153916, -1.0925484, 0.5462742 };
+static const float SH_C3[] = { -0.5900436, 2.8906114, -0.4570458, 0.3731763, -0.4570458, 1.4453057, -0.5900436 };
+
+struct SplatSHData { half3 col, sh1,sh2,sh3,sh4,sh5,sh6,sh7,sh8,sh9,sh10,sh11,sh12,sh13,sh14,sh15; };
+
+float3 DecodeSHCoeff(uint b, uint k, GSChunk chunk)
+{
+    float3 result = (float3)0;
+    if (_SHFmt == SHFMT_32F)
+        result = asfloat(_SplatSH.Load3(b + k*12u));                                              // raw (chunkless asset)
+    else if (_SHFmt == SHFMT_16)
+        result = lerp(chunk.shMin, chunk.shMax, LoadHalf3(_SplatSH, b + k*6u));
+    else if (_SHFmt == SHFMT_11)
+        result = lerp(chunk.shMin, chunk.shMax, DecodePacked_11_10_11(LoadUInt(_SplatSH, b + k*4u)));
+    else   // SHFMT_6
+        result = lerp(chunk.shMin, chunk.shMax, DecodePacked_5_6_5(LoadUShort(_SplatSH, b + k*2u)));
+    return result;
+}
+SplatSHData DecodeSHData(uint idx, float3 baseColor, GSChunk chunk)
+{
+    uint b = idx * _SHStride;
+    SplatSHData s;
+    s.col  = (half3)baseColor;
+    s.sh1  = (half3)DecodeSHCoeff(b, 0,  chunk); s.sh2  = (half3)DecodeSHCoeff(b, 1,  chunk); s.sh3  = (half3)DecodeSHCoeff(b, 2,  chunk);
+    s.sh4  = (half3)DecodeSHCoeff(b, 3,  chunk); s.sh5  = (half3)DecodeSHCoeff(b, 4,  chunk); s.sh6  = (half3)DecodeSHCoeff(b, 5,  chunk);
+    s.sh7  = (half3)DecodeSHCoeff(b, 6,  chunk); s.sh8  = (half3)DecodeSHCoeff(b, 7,  chunk); s.sh9  = (half3)DecodeSHCoeff(b, 8,  chunk);
+    s.sh10 = (half3)DecodeSHCoeff(b, 9,  chunk); s.sh11 = (half3)DecodeSHCoeff(b, 10, chunk); s.sh12 = (half3)DecodeSHCoeff(b, 11, chunk);
+    s.sh13 = (half3)DecodeSHCoeff(b, 12, chunk); s.sh14 = (half3)DecodeSHCoeff(b, 13, chunk); s.sh15 = (half3)DecodeSHCoeff(b, 14, chunk);
+    return s;
+}
+half3 ShadeSH(SplatSHData splat, half3 dir, int shOrder)
+{
+    dir *= -1;
+    half x = dir.x, y = dir.y, z = dir.z;
+    half3 res = splat.col;   // band 0 (base colour) precomputed at decode
+    if (shOrder >= 1)
+    {
+        res += SH_C1 * (-splat.sh1 * y + splat.sh2 * z - splat.sh3 * x);
+        if (shOrder >= 2)
+        {
+            half xx=x*x, yy=y*y, zz=z*z, xy=x*y, yz=y*z, xz=x*z;
+            res += (SH_C2[0]*xy)*splat.sh4 + (SH_C2[1]*yz)*splat.sh5 + (SH_C2[2]*(2*zz-xx-yy))*splat.sh6
+                 + (SH_C2[3]*xz)*splat.sh7 + (SH_C2[4]*(xx-yy))*splat.sh8;
+            if (shOrder >= 3)
+            {
+                res += (SH_C3[0]*y*(3*xx-yy))*splat.sh9 + (SH_C3[1]*xy*z)*splat.sh10
+                     + (SH_C3[2]*y*(4*zz-xx-yy))*splat.sh11 + (SH_C3[3]*z*(2*zz-3*xx-3*yy))*splat.sh12
+                     + (SH_C3[4]*x*(4*zz-xx-yy))*splat.sh13 + (SH_C3[5]*z*(xx-yy))*splat.sh14
+                     + (SH_C3[6]*x*(xx-3*yy))*splat.sh15;
+            }
+        }
+    }
+    return max(res, 0);
+}
+
+// ================= 3D -> 2D projection =================
+float3x3 CalcMatrixFromRotationScale(float4 rot, float3 scale)
+{
+    float3x3 ms = float3x3(scale.x,0,0, 0,scale.y,0, 0,0,scale.z);
+    float x=rot.x, y=rot.y, z=rot.z, w=rot.w;
+    float3x3 mr = float3x3(1-2*(y*y+z*z), 2*(x*y-w*z), 2*(x*z+w*y),
+                           2*(x*y+w*z), 1-2*(x*x+z*z), 2*(y*z-w*x),
+                           2*(x*z-w*y), 2*(y*z+w*x), 1-2*(x*x+y*y));
+    return mul(mr, ms);
+}
+void CalcCovariance3D(float3x3 rotMat, out float3 sigma0, out float3 sigma1)
+{
+    float3x3 sig = mul(rotMat, transpose(rotMat));
+    sigma0 = float3(sig._m00, sig._m01, sig._m02);
+    sigma1 = float3(sig._m11, sig._m12, sig._m22);
+}
+float3 CalcCovariance2D(float3 objPos, float3 cov3d0, float3 cov3d1, float4x4 matrixMV, float4x4 matrixP, float4 screenParams)
+{
+    float3 viewPos = mul(matrixMV, float4(objPos, 1)).xyz;
+    float aspect = matrixP._m00 / matrixP._m11;
+    float tanFovX = rcp(matrixP._m00), tanFovY = rcp(matrixP._m11 * aspect);
+    float limX = 1.3 * tanFovX, limY = 1.3 * tanFovY;
+    viewPos.x = clamp(viewPos.x / viewPos.z, -limX, limX) * viewPos.z;
+    viewPos.y = clamp(viewPos.y / viewPos.z, -limY, limY) * viewPos.z;
+    float focal = screenParams.x * matrixP._m00 / 2;
+    float3x3 J = float3x3(focal/viewPos.z, 0, -(focal*viewPos.x)/(viewPos.z*viewPos.z),
+                          0, focal/viewPos.z, -(focal*viewPos.y)/(viewPos.z*viewPos.z), 0, 0, 0);
+    float3x3 T = mul(J, (float3x3)matrixMV);
+    float3x3 V = float3x3(cov3d0.x,cov3d0.y,cov3d0.z, cov3d0.y,cov3d1.x,cov3d1.y, cov3d0.z,cov3d1.y,cov3d1.z);
+    float3x3 cov = mul(T, mul(V, transpose(T)));
+    cov._m00 += 0.3; cov._m11 += 0.3;   // low-pass: at least ~1px
+    return float3(cov._m00, cov._m01, cov._m11);
+}
+void DecomposeCovariance(float3 cov2d, out float2 v1, out float2 v2)
+{
+    float diag1 = cov2d.x, diag2 = cov2d.z, offDiag = cov2d.y;
+    float mid = 0.5 * (diag1 + diag2);
+    float radius = length(float2((diag1 - diag2) / 2.0, offDiag));
+    float lambda1 = mid + radius, lambda2 = max(mid - radius, 0.1);
+    float2 diagVec = normalize(float2(offDiag, lambda1 - diag1)); diagVec.y = -diagVec.y;
+    float maxSize = 4096.0;
+    v1 = min(sqrt(2.0*lambda1), maxSize) * diagVec;
+    v2 = min(sqrt(2.0*lambda2), maxSize) * float2(diagVec.y, -diagVec.x);
+}
+
+// ================= view data + kernel =================
+// pos.xyz = WORLD-space centre (the vertex shader re-projects it per eye);
+// pos.w   = validity flag (1 = in front of the centre camera, 0 = cull).
+struct SplatViewData { float4 pos; float2 axis1, axis2; uint2 color; };
+RWStructuredBuffer<SplatViewData> _SplatViewData;
+RWStructuredBuffer<uint> _SplatSortKeys;
+RWStructuredBuffer<uint> _SplatSortDistances;
+
+// --- chunk frustum culling (see SplatCull.compute) ---
+// _ChunkVisible[_ChunkVisBase + chunkIdx] is 0 for chunks outside the view.
+// A culled splat early-outs BEFORE the costly decode/SH work and writes a dead
+// entry (pos.w = 0 -> the vertex shader discards it, so it costs no fragments;
+// sort key 0xFFFFFFFF -> it sorts harmlessly to the back).
+StructuredBuffer<uint> _ChunkVisible;
+uint _CullEnabled;      // 0 = culling off (buffer may be a dummy)
+uint _ChunkVisBase;     // this cloud's base offset into _ChunkVisible
+
+float4x4 _MatrixObjectToWorld, _MatrixWorldToObject, _MatrixMV, _MatrixP;
+float4 _VecScreenParams, _VecWorldSpaceCameraPos;
+int _SHOrder;
+float _SplatScale, _SplatOpacityScale;
+
+[numthreads(64,1,1)]
+void CSCalcView(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= _SplatCount) return;
+
+    uint gidx = _SplatOffset + idx;
+
+    // Frustum-culled chunk? Write a dead splat and skip decode + SH entirely.
+    if (_CullEnabled != 0 && _ChunkVisible[_ChunkVisBase + (idx / 256u)] == 0)
+    {
+        SplatViewData dead = (SplatViewData)0;   // pos.w = 0 -> discarded in the VS
+        _SplatViewData[gidx] = dead;
+        _SplatSortKeys[gidx] = gidx;
+        _SplatSortDistances[gidx] = 0xFFFFFFFFu; // sorts to the back, never seen
+        return;
+    }
+
+    float3 pos, scale; float4 rot, color; bool useChunks; GSChunk chunk;
+    DecodePosRotScaleColor(idx, pos, rot, scale, color, useChunks, chunk);
+
+
+    float3 worldPos = mul(_MatrixObjectToWorld, float4(pos, 1)).xyz;
+    float viewZ = mul(_MatrixMV, float4(pos, 1)).z;      // centre-eye depth; ascending == back-to-front
+    _SplatSortKeys[gidx] = gidx;                          // payload = global index
+    _SplatSortDistances[gidx] = FloatToSortableUint(viewZ);
+
+    // Store the world centre; the vertex shader projects it with the per-eye VP.
+    // 2D axes + colour + sort are computed once against the centre eye.
+    SplatViewData view = (SplatViewData)0;
+    view.pos = float4(worldPos, 0);
+
+    if (viewZ < 0)   // in front of the centre camera
+    {
+        view.pos.w = 1;
+        float3x3 rsMat = CalcMatrixFromRotationScale(rot, scale);
+        float3 cov3d0, cov3d1;
+        CalcCovariance3D(rsMat, cov3d0, cov3d1);
+        float s2 = _SplatScale * _SplatScale;
+        cov3d0 *= s2; cov3d1 *= s2;
+        DecomposeCovariance(CalcCovariance2D(pos, cov3d0, cov3d1, _MatrixMV, _MatrixP, _VecScreenParams), view.axis1, view.axis2);
+
+        SplatSHData sh = DecodeSHData(idx, color.rgb, chunk);
+        float3 objViewDir = normalize(mul((float3x3)_MatrixWorldToObject, _VecWorldSpaceCameraPos.xyz - worldPos));
+        half3 rgb = ShadeSH(sh, (half3)objViewDir, _SHOrder);
+        half a = (half)min(color.a * _SplatOpacityScale, 65000.0);
+        view.color.x = (f32tof16(rgb.r) << 16) | f32tof16(rgb.g);
+        view.color.y = (f32tof16(rgb.b) << 16) | f32tof16(a);
+    }
+    _SplatViewData[gidx] = view;
+}

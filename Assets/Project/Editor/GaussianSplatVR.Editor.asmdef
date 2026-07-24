@@ -1,0 +1,14 @@
+{
+    "name": "GaussianSplatVR.Editor",
+    "rootNamespace": "GaussianSplatVR.Editor",
+    "references": [ "GaussianSplatVR.Runtime", "Unity.Mathematics", "Unity.Collections", "Unity.Burst" ],
+    "includePlatforms": [ "Editor" ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

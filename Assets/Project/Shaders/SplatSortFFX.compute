@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MIT
+// InteractiveGaussianSplattingVR
+//
+// AMD FidelityFX ParallelSort kernels. Quest-safe: basic wave ops only
+// (require wavebasic), unlike DeviceRadixSort. Kernel bodies + buffers are in
+// the included HLSL. Driven by GaussianSplatFfxSort.cs. (Requirement 5.2.)
+
+#pragma kernel FfxParallelSortCount
+#pragma kernel FfxParallelSortReduce
+#pragma kernel FfxParallelSortScan
+#pragma kernel FfxParallelSortScanAdd
+#pragma kernel FfxParallelSortScatter
+
+#pragma require wavebasic
+#pragma use_dxc
+
+#include "GpuSortFFX.hlsl"
