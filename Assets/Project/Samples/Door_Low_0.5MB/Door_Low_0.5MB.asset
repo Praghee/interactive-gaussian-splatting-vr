@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e59f5be6b3985e24da7f5d006a97e0ba, type: 3}
+  m_Name: Door_Low_0.5MB
+  m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatAsset
+  m_FormatVersion: 20260101
+  m_SplatCount: 6263
+  m_BoundsMin: {x: -0.009876519, y: -0.35481453, z: -0.09051764}
+  m_BoundsMax: {x: 0.53340065, y: 0.3010869, z: 0.07462191}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 54618173c958f73f1dbb454833140efa
+  m_PosFormat: 2
+  m_ScaleFormat: 2
+  m_RotFormat: 1
+  m_ColorFormat: 2
+  m_SHFormat: 2
+  m_PosData: {fileID: 4900000, guid: 657e659b259e7eb4797edfc1d8b23a32, type: 3}
+  m_OtherData: {fileID: 4900000, guid: ab7d84bcea1a24446a8a6bcb0e6b0fdf, type: 3}
+  m_ColorData: {fileID: 4900000, guid: e79bc9e3b9aafda4e899f1f52f8c42cb, type: 3}
+  m_SHData: {fileID: 4900000, guid: b524be6c442c92e419ebee2c298bb504, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: c2bfa9304a8898742a7867b8adbf9782, type: 3}

@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e59f5be6b3985e24da7f5d006a97e0ba, type: 3}
+  m_Name: Kitchen_VeryLow_9.8MB
+  m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatAsset
+  m_FormatVersion: 20260101
+  m_SplatCount: 220599
+  m_BoundsMin: {x: -1.3779031, y: -1.4119285, z: -1.3174362}
+  m_BoundsMax: {x: 1.7617012, y: 1.9834887, z: 0.4333494}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: 6a815fd28de7c7b4b690ddfb0cd45a77
+  m_PosFormat: 2
+  m_ScaleFormat: 3
+  m_RotFormat: 1
+  m_ColorFormat: 2
+  m_SHFormat: 3
+  m_PosData: {fileID: 4900000, guid: 290a92a1aa5867c448e8064cc70f6e9f, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 9303d4022d047f14f837c07d105308d3, type: 3}
+  m_ColorData: {fileID: 4900000, guid: d8167b78f46047547ab06a56ed394948, type: 3}
+  m_SHData: {fileID: 4900000, guid: 462eb5443fff8194e8660f21bf3518ce, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 860d92a5b281d9e4bb76dc3085a270c6, type: 3}

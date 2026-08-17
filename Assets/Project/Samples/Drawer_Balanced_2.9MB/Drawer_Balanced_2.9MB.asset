@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e59f5be6b3985e24da7f5d006a97e0ba, type: 3}
+  m_Name: Drawer_Balanced_2.9MB
+  m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatAsset
+  m_FormatVersion: 20260101
+  m_SplatCount: 36280
+  m_BoundsMin: {x: -0.33823067, y: -0.20891096, z: -0.47206166}
+  m_BoundsMax: {x: 0.32653102, y: 0.25042418, z: 0.15933503}
+  m_DataHash:
+    serializedVersion: 2
+    Hash: eee2309038ab3ecd1c758eee7a289140
+  m_PosFormat: 1
+  m_ScaleFormat: 1
+  m_RotFormat: 1
+  m_ColorFormat: 1
+  m_SHFormat: 2
+  m_PosData: {fileID: 4900000, guid: 213b28d6a7b3c1d4abaf9a04ac6b4994, type: 3}
+  m_OtherData: {fileID: 4900000, guid: 366eb1c631dbddd4bb6a3d1333af9dac, type: 3}
+  m_ColorData: {fileID: 4900000, guid: c951220ff5187744c90ef73226906fc4, type: 3}
+  m_SHData: {fileID: 4900000, guid: 95e5842fcc44f184897a22b85ad677fc, type: 3}
+  m_ChunkData: {fileID: 4900000, guid: 1e615f68ce5af2f4b8ba9ecef98abef8, type: 3}
