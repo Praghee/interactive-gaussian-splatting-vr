@@ -914,7 +914,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 65c995f0b02414f4eb1d73acd3b81410, type: 3}
   m_Name: 
   m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatRenderer
-  m_Asset: {fileID: 11400000, guid: e70d2ef41aa46dd439099cef129d92ff, type: 2}
+  m_Asset: {fileID: 11400000, guid: 1a198c502f25a1b4ab6a399a1ff20c97, type: 2}
 --- !u!1001 &623645000
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1360,7 +1360,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 65c995f0b02414f4eb1d73acd3b81410, type: 3}
   m_Name: 
   m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatRenderer
-  m_Asset: {fileID: 11400000, guid: bcdb243b07eb36d49a89b6125373e922, type: 2}
+  m_Asset: {fileID: 11400000, guid: 122d7474e9c775f4a9e78153ca7a8c30, type: 2}
 --- !u!114 &886816591
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1745,7 +1745,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 65c995f0b02414f4eb1d73acd3b81410, type: 3}
   m_Name: 
   m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatRenderer
-  m_Asset: {fileID: 11400000, guid: 6afad8675c5e5c341b181ee263ed6879, type: 2}
+  m_Asset: {fileID: 11400000, guid: 7e0160da281209e49959b2800bf95bfe, type: 2}
 --- !u!1 &1184286254
 GameObject:
   m_ObjectHideFlags: 0
@@ -2300,7 +2300,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 65c995f0b02414f4eb1d73acd3b81410, type: 3}
   m_Name: 
   m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatRenderer
-  m_Asset: {fileID: 11400000, guid: 14e08fbfe5e421f4d892790869b75fa3, type: 2}
+  m_Asset: {fileID: 11400000, guid: 519753f5e13db424bb3152ece602fb97, type: 2}
 --- !u!114 &1537664029
 MonoBehaviour:
   m_ObjectHideFlags: 0
