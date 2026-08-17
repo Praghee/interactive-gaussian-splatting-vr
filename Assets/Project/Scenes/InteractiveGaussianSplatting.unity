@@ -1330,7 +1330,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 65c995f0b02414f4eb1d73acd3b81410, type: 3}
   m_Name: 
   m_EditorClassIdentifier: GaussianSplatVR.Runtime::GaussianSplatVR.Runtime.GaussianSplatRenderer
-  m_Asset: {fileID: 11400000, guid: 519753f5e13db424bb3152ece602fb97, type: 2}
+  m_Asset: {fileID: 11400000, guid: 7e0160da281209e49959b2800bf95bfe, type: 2}
 --- !u!1 &1184286254
 GameObject:
   m_ObjectHideFlags: 0

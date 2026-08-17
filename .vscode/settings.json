@@ -67,5 +67,5 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "interactive-gaussian-splatting-vr.slnx"
+    "dotnet.defaultSolution": "pxg524.slnx"
 }
