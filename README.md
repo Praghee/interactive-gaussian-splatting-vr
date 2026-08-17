@@ -159,6 +159,82 @@ Everything is configured on the **Gaussian Splat URP Feature**, added to both `P
 
 ---
 
+## Evaluation
+
+A small offline study measuring how far a splat scene can be compressed before
+the rendering visibly degrades. It compares two independent settings:
+
+- **Precision** — the converter's quality preset (`Very Low` … `Very High`),
+  which changes how many bits each stored value uses.
+- **SH order** — the **SH Order** slider on the Gaussian Splat URP Feature
+  (0–3), which changes how many spherical-harmonic bands the shader evaluates.
+
+Five presets × four SH orders = 20 configurations, each captured from five
+fixed camera positions, all compared against `Very High` at SH order 3.
+
+### The code
+
+Everything lives in `Evaluation/`, runs outside Unity, and needs only the
+captured PNGs.
+
+| Script | What it does |
+|---|---|
+| `scores.py` | Scores every capture against the reference, writes `scores.csv` |
+| `charts.py` | Reads `scores.csv`, draws the summary charts |
+| `compare.py` | Reads the PNGs, draws the side-by-side and difference figures |
+
+```
+pip install numpy pillow scikit-image matplotlib
+```
+
+### Capturing the images
+
+1. On `Assets/Settings/PC_Renderer.asset`, set **Chunk culling = off** and
+   **SH Order = 3**. Leave both alone for the rest of the capture.
+2. Convert each cloud at all five presets:
+   **Tools → Gaussian Splat → Convert PLY to Asset**. Note the reported scene
+   sizes; they go into `scores.py`.
+3. Duplicate the main scene, disable **Initialize XR on Startup**, lock the
+   Game view to a fixed resolution, and place five cameras at fixed positions
+   (`C1` … `C5`).
+4. Install **Unity Recorder** (Package Manager) and set it to
+   *Image Sequence → Game View → PNG → Single Frame*.
+5. For each preset, assign the three splat renderers' **Source** fields, then
+   step **SH Order** through 3, 2, 1, 0, capturing all five cameras each time.
+6. Set **SH Order** back to 3 when finished.
+
+### Running the scripts
+
+Arrange the captures like this, one folder per SH order:
+
+```
+Evaluation/
+├── scores.py
+├── charts.py
+├── compare.py
+└── Images/
+    ├── SH3/   SH3_01_VeryHigh_C1.png … SH3_05_VeryLow_C5.png
+    ├── SH2/   SH2_01_VeryHigh_C1.png …
+    ├── SH1/   …
+    └── SH0/   …
+```
+
+Then:
+
+```
+python scores.py     # writes scores.csv
+python charts.py     # writes fig1_pareto.png, fig2_heatmaps.png, …
+python compare.py    # writes C3_diffmaps.png, C5_failure_modes.png, …
+```
+
+Before the first run, paste your measured scene sizes into the `SCENE_MB`
+table at the top of `scores.py`. Every projected size is derived from it.
+
+`scores.py` skips any configuration whose captures are missing, so the scripts
+can be run part-way through the capture to check things look sensible.
+
+---
+
 ## Project layout
 
 ```
